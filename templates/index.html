@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion-Aware Study Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎓 Emotion-Aware Study Assistant</h1>
+            <p>Your intelligent learning companion that adapts to your emotional state</p>
+        </header>
+
+        <main>
+            <section class="intro-section">
+                <h2>How it works</h2>
+                <div class="features">
+                    <div class="feature">
+                        <div class="feature-icon">😊</div>
+                        <h3>Emotion Detection</h3>
+                        <p>Uses your webcam to analyze facial expressions and detect your current emotional state</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">🎤</div>
+                        <h3>Voice Analysis</h3>
+                        <p>Analyzes your voice tone to understand stress levels and emotional patterns</p>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">📚</div>
+                        <h3>Personalized Recommendations</h3>
+                        <p>Provides tailored study tips, motivational quotes, and learning strategies</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="action-section">
+                <h2>Start Your Analysis</h2>
+                <div class="analysis-options">
+                    <button onclick="startEmotionAnalysis()" class="btn btn-primary">
+                        Start Emotion Analysis
+                    </button>
+                    <button onclick="startVoiceAnalysis()" class="btn btn-secondary">
+                        Analyze Voice Tone
+                    </button>
+                    <a href="/dashboard" class="btn btn-accent">
+                        View Dashboard
+                    </a>
+                </div>
+            </section>
+
+            <section id="results-section" class="results-section" style="display: none;">
+                <h2>Your Analysis Results</h2>
+                <div id="emotion-results"></div>
+                <div id="voice-results"></div>
+                <div id="recommendations-results"></div>
+            </section>
+        </main>
+    </div>
+
+    <div id="loading-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="loader"></div>
+            <p>Analyzing your emotions... Please look at the camera</p>
+            <button onclick="stopAnalysis()" class="btn btn-small">Stop Analysis</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
