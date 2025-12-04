@@ -22,17 +22,7 @@ ENV/
 
 # Testing
 .pytest_cache/
-*.log
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Data files
-data/
-models/
-
-# Test files
-test_*.py
-*_test.py
-test_*.txt
