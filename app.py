@@ -1,21 +1,33 @@
-from flask import Flask, render_template, request, jsonify, session
-import cv2
-import numpy as np
-from fer import FER
-import base64
-from datetime import datetime
+from flask import Flask, render_template, jsonify, request, session
 import json
 import os
-from study_recommendations import get_study_recommendations, get_motivational_quote
-from voice_analyzer import analyze_voice_emotion
+import numpy as np
+from datetime import datetime
+from voice_analyzer import VoiceAnalyzer
+from study_recommendations import StudyRecommendations
+
+try:
+    from emotion_detector import EmotionDetector
+except ImportError:
+    print("Warning: Could not import EmotionDetector (DeepFace missing?). Using mock class.")
+    class EmotionDetector:
+        def analyze_webcam_emotion(self, duration):
+            return {
+                'dominant_emotion': 'neutral',
+                'emotion_percentages': {'neutral': 100.0},
+                'total_detections': 1,
+                'session_timestamp': datetime.now().isoformat()
+            }
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here-change-in-production'
+app.secret_key = 'your-secret-key-here'  # Change this in production
 
-# Initialize emotion detector
-emotion_detector = FER(mtcnn=True)
+# Initialize components
+emotion_detector = EmotionDetector()
+voice_analyzer = VoiceAnalyzer()
+study_recommender = StudyRecommendations()
 
-# Ensure data directory exists
+# Ensure data directories exist
 os.makedirs('data/user_sessions', exist_ok=True)
 
 @app.route('/')
@@ -30,112 +42,151 @@ def dashboard():
 
 @app.route('/analyze_emotion', methods=['POST'])
 def analyze_emotion():
-    """Analyze emotion from webcam image"""
+    """Analyze emotion from uploaded image"""
     try:
         data = request.json
         image_data = data.get('image')
         
         if not image_data:
-            return jsonify({'error': 'No image data provided'}), 400
+            return jsonify({
+                'success': False,
+                'error': 'No image data provided'
+            })
         
         # Decode base64 image
-        image_data = image_data.split(',')[1]
-        image_bytes = base64.b64decode(image_data)
+        import base64
+        import cv2
+        from deepface import DeepFace
         
-        # Convert to numpy array
+        # Remove data URL prefix if present
+        if 'base64,' in image_data:
+            image_data = image_data.split('base64,')[1]
+        
+        # Decode image
+        image_bytes = base64.b64decode(image_data)
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        if img is None:
-            return jsonify({'error': 'Failed to decode image'}), 400
+        # Analyze with DeepFace
+        result = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False)
         
-        # Detect emotions
-        emotions = emotion_detector.detect_emotions(img)
+        if isinstance(result, list):
+            result = result[0]
         
-        if not emotions:
-            return jsonify({
-                'success': False,
-                'message': 'No face detected. Please ensure your face is visible.'
-            })
-        
-        # Get dominant emotion
-        dominant_emotion = max(emotions[0]['emotions'].items(), key=lambda x: x[1])
-        emotion_name = dominant_emotion[0]
-        confidence = dominant_emotion[1]
+        emotion_result = {
+            'dominant_emotion': result['dominant_emotion'],
+            'emotion_percentages': result['emotion'],
+            'total_detections': 1,
+            'session_timestamp': datetime.now().isoformat()
+        }
         
         # Get study recommendations
-        recommendations = get_study_recommendations(emotion_name)
-        quote = get_motivational_quote(emotion_name)
+        recommendations = study_recommender.get_recommendations(
+            emotion_result['dominant_emotion']
+        )
         
-        # Save to session
-        if 'emotion_history' not in session:
-            session['emotion_history'] = []
-        
-        session['emotion_history'].append({
-            'emotion': emotion_name,
-            'confidence': float(confidence),
+        # Save session data
+        session_data = {
+            'emotion_analysis': emotion_result,
+            'recommendations': recommendations,
             'timestamp': datetime.now().isoformat()
-        })
-        session.modified = True
+        }
+        
+        # Save to file
+        session_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+        session_file = f'data/user_sessions/session_{session_id}.json'
+        
+        with open(session_file, 'w') as f:
+            json.dump(session_data, f, indent=2)
         
         return jsonify({
             'success': True,
-            'emotion': emotion_name,
-            'confidence': float(confidence),
-            'all_emotions': emotions[0]['emotions'],
-            'recommendations': recommendations,
-            'quote': quote
+            'emotion': emotion_result['dominant_emotion'],
+            'emotions': emotion_result['emotion_percentages'],
+            'recommendations': recommendations
         })
-        
+            
     except Exception as e:
-        print(f"Error in analyze_emotion: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        print(f"Error in emotion analysis: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/analyze_voice', methods=['POST'])
 def analyze_voice():
-    """Analyze voice emotion from audio"""
+    """Analyze voice tone"""
     try:
-        if 'audio' not in request.files:
-            return jsonify({'error': 'No audio file provided'}), 400
+        duration = request.json.get('duration', 5)
         
-        audio_file = request.files['audio']
+        # Perform voice analysis
+        voice_result = voice_analyzer.analyze_voice_tone(duration)
         
-        # Save temporarily
-        temp_path = 'data/temp_audio.wav'
-        audio_file.save(temp_path)
+        if voice_result:
+            return jsonify({
+                'success': True,
+                'voice_result': voice_result
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Could not analyze voice'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/get_recommendations', methods=['POST'])
+def get_recommendations():
+    """Get study recommendations based on emotion and stress"""
+    try:
+        data = request.json
+        emotion = data.get('emotion', 'neutral')
+        stress_level = data.get('stress_level')
         
-        # Analyze voice emotion
-        result = analyze_voice_emotion(temp_path)
-        
-        # Clean up
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        recommendations = study_recommender.get_recommendations(emotion, stress_level)
         
         return jsonify({
             'success': True,
-            'emotion': result.get('emotion', 'neutral'),
-            'text': result.get('text', ''),
-            'confidence': result.get('confidence', 0.0)
+            'recommendations': recommendations
         })
         
     except Exception as e:
-        print(f"Error in analyze_voice: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
-@app.route('/get_session_data')
-def get_session_data():
-    """Get session emotion history"""
-    emotion_history = session.get('emotion_history', [])
-    return jsonify({
-        'success': True,
-        'history': emotion_history
-    })
-
-@app.route('/clear_session', methods=['POST'])
-def clear_session():
-    """Clear session data"""
-    session.clear()
-    return jsonify({'success': True})
+@app.route('/session_history')
+def session_history():
+    """Get user session history"""
+    try:
+        sessions = []
+        session_dir = 'data/user_sessions'
+        
+        if os.path.exists(session_dir):
+            for filename in sorted(os.listdir(session_dir), reverse=True):
+                if filename.endswith('.json'):
+                    filepath = os.path.join(session_dir, filename)
+                    with open(filepath, 'r') as f:
+                        session_data = json.load(f)
+                        sessions.append(session_data)
+        
+        return jsonify({
+            'success': True,
+            'sessions': sessions[:50]  # Return last 50 sessions
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print("Starting Emotion-Aware Study Assistant...")
+    print("Server running at http://localhost:5000")
+    app.run(debug=True, port=5000)

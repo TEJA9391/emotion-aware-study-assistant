@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emotion-Aware Study Assistant</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -50,6 +52,10 @@
                 </div>
             </section>
 
+            <!-- Hidden video for webcam capture -->
+            <video id="webcam" autoplay style="display: none;" width="640" height="480"></video>
+            <canvas id="canvas" style="display: none;" width="640" height="480"></canvas>
+
             <section id="results-section" class="results-section" style="display: none;">
                 <h2>Your Analysis Results</h2>
                 <div id="emotion-results"></div>
@@ -69,4 +75,5 @@
 
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
+
 </html>
