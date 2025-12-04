@@ -178,11 +178,51 @@ def analyze_voice():
             word_count = len(transcript.split())
             stress_level = 'Low' if word_count < 10 else ('Medium' if word_count < 20 else 'High')
             
+            voice_result = {
+                'text': transcript,
+                'stress_level': stress_level,
+                'energy_level': word_count * 5.0,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Generate recommendations based on stress
+            recommendations = {
+                'emotion': 'stress_' + stress_level.lower(),
+                'study_tips': [
+                    'Take a deep breath and speak slowly.',
+                    'Break your study session into smaller chunks.',
+                    'Drink some water to stay hydrated.'
+                ] if stress_level == 'High' else [
+                    'You sound calm, great time to study complex topics!',
+                    'Maintain this steady pace.',
+                    'Record yourself explaining concepts to reinforce learning.'
+                ],
+                'motivational_quote': "Your voice is your power. Use it to articulate your brilliance." if stress_level == 'Low' else "Calmness is the cradle of power.",
+                'recommended_activities': ['Breathing exercises', 'Light stretching']
+            }
+            
+            # Save session data
+            session_data = {
+                'voice_analysis': voice_result,
+                'recommendations': recommendations,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Save to file
+            session_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+            session_file = f'data/user_sessions/session_{session_id}.json'
+            
+            with open(session_file, 'w') as f:
+                json.dump(session_data, f, indent=2)
+                
+            print(f"Voice session saved to: {session_file}")
+            
             return jsonify({
                 'success': True,
                 'text': transcript,
                 'stress_level': stress_level,
                 'energy_level': word_count * 5.0,
+                'recommendations': recommendations,
                 'timestamp': datetime.now().isoformat()
             })
             
@@ -218,16 +258,26 @@ def get_recommendations():
 def session_history():
     """Get user session history"""
     try:
+        print("Session history route called")  # Debug
         sessions = []
         session_dir = 'data/user_sessions'
         
+        print(f"Checking directory: {session_dir}")  # Debug
+        print(f"Directory exists: {os.path.exists(session_dir)}")  # Debug
+        
         if os.path.exists(session_dir):
-            for filename in sorted(os.listdir(session_dir), reverse=True):
+            files = sorted(os.listdir(session_dir), reverse=True)
+            print(f"Found {len(files)} files")  # Debug
+            
+            for filename in files:
                 if filename.endswith('.json'):
                     filepath = os.path.join(session_dir, filename)
+                    print(f"Loading: {filepath}")  # Debug
                     with open(filepath, 'r') as f:
                         session_data = json.load(f)
                         sessions.append(session_data)
+        
+        print(f"Returning {len(sessions)} sessions")  # Debug
         
         return jsonify({
             'success': True,
@@ -235,6 +285,7 @@ def session_history():
         })
         
     except Exception as e:
+        print(f"Error in session_history: {str(e)}")  # Debug
         return jsonify({
             'success': False,
             'error': str(e)

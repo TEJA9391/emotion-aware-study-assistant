@@ -249,6 +249,13 @@ function displayVoiceResults(data) {
         voiceResults.innerHTML = html;
         resultsSection.style.display = 'block';
         resultsSection.scrollIntoView({ behavior: 'smooth' });
+
+        // Reload session history if on dashboard page
+        if (document.getElementById('session-history')) {
+            setTimeout(() => {
+                loadSessionHistory();
+            }, 1000);
+        }
     } else {
         voiceResults.innerHTML = `
             <div class="error-message">
@@ -294,23 +301,35 @@ function stopVideoStream() {
 // Dashboard functions
 async function loadSessionHistory() {
     try {
+        console.log('Loading session history...');
         const response = await fetch('/session_history');
         const data = await response.json();
 
+        console.log('Session history response:', data);
+
         if (data.success) {
+            console.log(`Found ${data.sessions.length} sessions`);
             displaySessionHistory(data.sessions);
         } else {
+            console.error('Failed to load sessions:', data.error);
             document.getElementById('session-history').innerHTML =
                 '<p>Could not load session history</p>';
         }
     } catch (error) {
+        console.error('Error loading session history:', error);
         document.getElementById('session-history').innerHTML =
             '<p>Error loading session history</p>';
     }
 }
 
 function displaySessionHistory(sessions) {
+    console.log('displaySessionHistory called with', sessions.length, 'sessions');
     const historyDiv = document.getElementById('session-history');
+
+    if (!historyDiv) {
+        console.error('session-history element not found!');
+        return;
+    }
 
     if (sessions.length === 0) {
         historyDiv.innerHTML = '<p>No previous sessions found</p>';
@@ -320,20 +339,42 @@ function displaySessionHistory(sessions) {
     let historyHTML = `<p class="text-center"><strong>Total Sessions: ${sessions.length}</strong></p>`;
 
     sessions.forEach((session, index) => {
-        const emotion = session.emotion_analysis?.dominant_emotion || 'Unknown';
         const timestamp = new Date(session.timestamp).toLocaleString();
-        const totalDetections = session.emotion_analysis?.total_detections || 0;
-        const emotionPercentages = session.emotion_analysis?.emotion_percentages || {};
         const recommendations = session.recommendations || {};
-
-        let emotionBreakdown = '';
-        for (const [emo, percentage] of Object.entries(emotionPercentages)) {
-            emotionBreakdown += `<span style="display:inline-block; margin:2px 5px;">${emo}: ${percentage.toFixed(1)}%</span>`;
-        }
-
         let recsPreview = '';
+
         if (recommendations.study_tips && recommendations.study_tips.length > 0) {
             recsPreview = recommendations.study_tips[0];
+        }
+
+        let sessionContent = '';
+
+        if (session.emotion_analysis) {
+            const emotion = session.emotion_analysis.dominant_emotion;
+            const totalDetections = session.emotion_analysis.total_detections;
+            const emotionPercentages = session.emotion_analysis.emotion_percentages || {};
+
+            let emotionBreakdown = '';
+            for (const [emo, percentage] of Object.entries(emotionPercentages)) {
+                emotionBreakdown += `<span style="display:inline-block; margin:2px 5px;">${emo}: ${percentage.toFixed(1)}%</span>`;
+            }
+
+            sessionContent = `
+                <div class="session-emotion" style="margin-bottom: 5px;">
+                    <strong>Emotion:</strong> ${emotion.toUpperCase()} (${totalDetections} detections)
+                </div>
+                ${emotionBreakdown ? `<div style="font-size: 0.85rem; color: #555; margin-bottom: 8px;">${emotionBreakdown}</div>` : ''}
+            `;
+        } else if (session.voice_analysis) {
+            const stress = session.voice_analysis.stress_level;
+            const transcript = session.voice_analysis.text || '';
+
+            sessionContent = `
+                <div class="session-voice" style="margin-bottom: 5px;">
+                    <strong>Voice Analysis:</strong> Stress Level <span class="stress-${stress.toLowerCase()}">${stress.toUpperCase()}</span>
+                </div>
+                ${transcript ? `<div style="font-size: 0.85rem; color: #555; margin-bottom: 8px;">"${transcript}"</div>` : ''}
+            `;
         }
 
         historyHTML += `
@@ -342,16 +383,77 @@ function displaySessionHistory(sessions) {
                     <strong>Session #${sessions.length - index}</strong>
                     <span style="color: #666; font-size: 0.9rem;">${timestamp}</span>
                 </div>
-                <div class="session-emotion" style="margin-bottom: 5px;">
-                    <strong>Emotion:</strong> ${emotion.toUpperCase()} (${totalDetections} detections)
-                </div>
-                ${emotionBreakdown ? `<div style="font-size: 0.85rem; color: #555; margin-bottom: 8px;">${emotionBreakdown}</div>` : ''}
+                ${sessionContent}
                 ${recsPreview ? `<div style="font-size: 0.9rem; font-style: italic; color: #444; margin-top: 8px;">💡 ${recsPreview}</div>` : ''}
             </div>
         `;
     });
 
     historyDiv.innerHTML = historyHTML;
+
+    // Update current status with the latest session
+    if (sessions.length > 0) {
+        updateCurrentStatus(sessions[0]);
+    }
+}
+
+function updateCurrentStatus(session) {
+    const statusDiv = document.getElementById('current-status');
+    const recsDiv = document.getElementById('current-recommendations');
+
+    if (statusDiv) {
+        let statusHTML = '';
+        const timestamp = new Date(session.timestamp).toLocaleString();
+
+        if (session.emotion_analysis) {
+            const emotion = session.emotion_analysis.dominant_emotion;
+            statusHTML = `
+                <div class="status-item">
+                    <p><strong>Latest Emotion:</strong> ${emotion.toUpperCase()}</p>
+                    <p class="text-small">Recorded: ${timestamp}</p>
+                </div>
+            `;
+        } else if (session.voice_analysis) {
+            const stress = session.voice_analysis.stress_level;
+            statusHTML = `
+                <div class="status-item">
+                    <p><strong>Voice Stress:</strong> ${stress.toUpperCase()}</p>
+                    <p class="text-small">Recorded: ${timestamp}</p>
+                </div>
+            `;
+        } else {
+            statusHTML = `
+                <div class="status-item">
+                    <p><strong>Latest Analysis:</strong> Unknown</p>
+                    <p class="text-small">Recorded: ${timestamp}</p>
+                </div>
+            `;
+        }
+
+        statusDiv.innerHTML = statusHTML + `
+            <button onclick="refreshStatus()" class="btn btn-small" style="margin-top: 10px;">Refresh</button>
+        `;
+    }
+
+    if (recsDiv && session.recommendations) {
+        const recs = session.recommendations;
+        let html = '';
+
+        if (recs.motivational_quote) {
+            html += `<blockquote class="quote-small">"${recs.motivational_quote}"</blockquote>`;
+        }
+
+        if (recs.study_tips && recs.study_tips.length > 0) {
+            html += '<ul class="recs-list-small">';
+            // Show top 3 tips
+            recs.study_tips.slice(0, 3).forEach(tip => {
+                html += `<li>${tip}</li>`;
+            });
+            html += '</ul>';
+        }
+
+        recsDiv.innerHTML = html;
+    }
 }
 
 // Stop video stream
